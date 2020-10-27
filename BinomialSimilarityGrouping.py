@@ -2,7 +2,7 @@ import numpy as np
 import scipy.stats as stats
 from scipy.special import binom
 from scipy.spatial.distance import pdist, squareform
-from scipy.cluster.hierarchy import linkage, fcluster, single
+from scipy.cluster.hierarchy import linkage, fcluster, single, ward
 
 
 class BSG:
@@ -11,9 +11,14 @@ class BSG:
     and has also a Binomial distributed value associated to it.
     """
 
-    def __init__(self, n_estimation):
+    def __init__(self, n_estimation, p_penalization=None, verbose=False):
         self.n_estimation_ = n_estimation
         self.linkage_matrix_ = None
+        if p_penalization is None:
+            self.p_penalization_ = lambda x: 1 + x
+        else:
+            self.p_penalization_ = p_penalization
+        self.verbose_ = verbose
 
     def dist_proba(self, xp, yp):
         x_min, x_max = int(min(xp[0], yp[0])), int(max(xp[0], yp[0]))
@@ -36,14 +41,21 @@ class BSG:
             unique_p: stats.binom.pmf(s, self.n_estimation_, unique_p)
             for unique_p in unique_p_arr
         }
-
+        if self.verbose_:
+            print("Compute spatial distance")
         dist = pdist(X)
         dist_p = pdist(self.p_)
 
+        if self.verbose_:
+            print("Compute probability distance")
         yp = np.concatenate((y, self.p_), axis=1)
         dist_distribution = pdist(yp, metric=self.dist_proba)
-        combined_dist = dist / (1 - dist_distribution) * (1 + dist_p)
-        self.linkage_matrix_ = single(combined_dist)
+
+        combined_dist = dist / (1 - dist_distribution) * self.p_penalization_(dist_p)
+
+        if self.verbose_:
+            print("Compute Linkage matrix")
+        self.linkage_matrix_ = ward(combined_dist)
         return self.linkage_matrix_
 
     def predict_hierarchy(self, max_cluster=10):
